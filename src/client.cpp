@@ -12,7 +12,6 @@ namespace {
 
 constexpr char kServerIp[] = "127.0.0.1";
 constexpr std::uint16_t kServerPort = 8080;
-constexpr char kMessage[] = "Hello from client";
 
 bool close_fd(int fd, const char* name) {
     if (::close(fd) == -1) {
@@ -133,21 +132,39 @@ int main() {
     std::cout << "client local endpoint: " << local_ip << ':'
               << ntohs(local_address.sin_port) << "\n\n";
 
-    constexpr std::size_t message_size = sizeof(kMessage) - 1;
-    if (!send_all(client_fd, kMessage, message_size)) {
-        close_fd(client_fd, "client_fd");
-        return 1;
-    }
-    std::cout << "sent: " << kMessage << '\n';
+    bool success = true;
+    std::string message;
 
-    std::string echo;
-    if (!receive_exact(client_fd, echo, message_size)) {
-        close_fd(client_fd, "client_fd");
-        return 1;
+    while (true) {
+        std::cout << "message (quit/exit to close): " << std::flush;
+        if (!std::getline(std::cin, message)) {
+            std::cout << "\ninput closed\n";
+            break;
+        }
+
+        if (message == "quit" || message == "exit") {
+            break;
+        }
+        if (message.empty()) {
+            std::cout << "empty message not sent\n";
+            continue;
+        }
+
+        if (!send_all(client_fd, message.data(), message.size())) {
+            success = false;
+            break;
+        }
+        std::cout << "sent: " << message << '\n';
+
+        std::string echo;
+        if (!receive_exact(client_fd, echo, message.size())) {
+            success = false;
+            break;
+        }
+        std::cout << "echo from server: " << echo << '\n';
     }
-    std::cout << "echo from server: " << echo << '\n';
 
     const bool closed = close_fd(client_fd, "client_fd");
     std::cout << "\nconnection closed\n";
-    return closed ? 0 : 1;
+    return success && closed ? 0 : 1;
 }

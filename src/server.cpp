@@ -3,7 +3,11 @@
 #include <cstdint>
 #include <cstring>
 #include <iostream>
+#include <mutex>
+#include <sstream>
 #include <string>
+#include <system_error>
+#include <thread>
 
 #include <sys/socket.h>
 #include <unistd.h>
@@ -13,11 +17,24 @@ namespace {
 constexpr std::uint16_t kServerPort = 8080;
 constexpr int kBacklog = 8;
 constexpr std::size_t kBufferSize = 1024;
+std::mutex output_mutex;
+
+void log_message(const std::string& message) {
+    const std::lock_guard<std::mutex> lock(output_mutex);
+    std::cout << message << std::flush;
+}
+
+void log_error(const std::string& message) {
+    const std::lock_guard<std::mutex> lock(output_mutex);
+    std::cerr << message << std::flush;
+}
 
 bool close_fd(int fd, const char* name) {
     if (::close(fd) == -1) {
-        std::cerr << "close(" << name << ") failed: " << std::strerror(errno)
-                  << '\n';
+        std::ostringstream output;
+        output << "close(" << name << ") failed: " << std::strerror(errno)
+               << '\n';
+        log_error(output.str());
         return false;
     }
     return true;
@@ -37,14 +54,79 @@ bool send_all(int fd, const char* data, std::size_t size) {
             continue;
         }
 
-        std::cerr << "send() failed: "
-                  << (sent == 0 ? "connection made no forward progress"
-                                : std::strerror(errno))
-                  << '\n';
+        std::ostringstream output;
+        output << "send() failed: "
+               << (sent == 0 ? "connection made no forward progress"
+                             : std::strerror(errno))
+               << '\n';
+        log_error(output.str());
         return false;
     }
 
     return true;
+}
+
+void handle_client(int conn_fd, std::string client_ip,
+                   std::uint16_t client_port) {
+    const std::thread::id thread_id = std::this_thread::get_id();
+    {
+        std::ostringstream output;
+        output << "worker started\n"
+               << "thread=" << thread_id << '\n'
+               << "conn_fd=" << conn_fd << '\n'
+               << "client=" << client_ip << ':' << client_port << "\n\n";
+        log_message(output.str());
+    }
+
+    char buffer[kBufferSize]{};
+
+    while (true) {
+        ssize_t received = -1;
+        do {
+            received = ::recv(conn_fd, buffer, sizeof(buffer), 0);
+        } while (received == -1 && errno == EINTR);
+
+        if (received == 0) {
+            std::ostringstream output;
+            output << "[thread=" << thread_id
+                   << "] client closed conn_fd=" << conn_fd << '\n';
+            log_message(output.str());
+            break;
+        }
+        if (received == -1) {
+            std::ostringstream output;
+            output << "recv() failed for conn_fd=" << conn_fd << ": "
+                   << std::strerror(errno) << '\n';
+            log_error(output.str());
+            break;
+        }
+
+        const std::string message(buffer, static_cast<std::size_t>(received));
+        {
+            std::ostringstream output;
+            output << "[thread=" << thread_id << "] received on conn_fd="
+                   << conn_fd << ": " << message << '\n';
+            log_message(output.str());
+        }
+
+        if (!send_all(conn_fd, buffer, static_cast<std::size_t>(received))) {
+            break;
+        }
+        {
+            std::ostringstream output;
+            output << "[thread=" << thread_id << "] echo sent on conn_fd="
+                   << conn_fd << '\n';
+            log_message(output.str());
+        }
+    }
+
+    close_fd(conn_fd, "conn_fd");
+    {
+        std::ostringstream output;
+        output << "[thread=" << thread_id << "] connection closed, conn_fd="
+               << conn_fd << '\n';
+        log_message(output.str());
+    }
 }
 
 }  // namespace
@@ -87,65 +169,52 @@ int main() {
     std::cout << "server listening on 0.0.0.0:" << kServerPort << '\n';
     std::cout << "waiting for client..." << std::endl;
 
-    sockaddr_in client_address{};
-    socklen_t client_address_size = sizeof(client_address);
-    int conn_fd = -1;
+    while (true) {
+        sockaddr_in client_address{};
+        socklen_t client_address_size = sizeof(client_address);
 
-    do {
-        conn_fd = ::accept(
+        const int conn_fd = ::accept(
             listen_fd, reinterpret_cast<sockaddr*>(&client_address),
             &client_address_size);
-    } while (conn_fd == -1 && errno == EINTR);
 
-    if (conn_fd == -1) {
-        std::cerr << "accept() failed: " << std::strerror(errno) << '\n';
-        close_fd(listen_fd, "listen_fd");
-        return 1;
-    }
+        if (conn_fd == -1) {
+            if (errno == EINTR) {
+                continue;
+            }
+            std::cerr << "accept() failed: " << std::strerror(errno) << '\n';
+            continue;
+        }
 
-    char client_ip[INET_ADDRSTRLEN]{};
-    if (::inet_ntop(AF_INET, &client_address.sin_addr, client_ip,
-                    sizeof(client_ip)) == nullptr) {
-        std::cerr << "inet_ntop() failed: " << std::strerror(errno) << '\n';
-        close_fd(conn_fd, "conn_fd");
-        close_fd(listen_fd, "listen_fd");
-        return 1;
-    }
+        char client_ip[INET_ADDRSTRLEN]{};
+        if (::inet_ntop(AF_INET, &client_address.sin_addr, client_ip,
+                        sizeof(client_ip)) == nullptr) {
+            std::cerr << "inet_ntop() failed: " << std::strerror(errno)
+                      << '\n';
+            close_fd(conn_fd, "conn_fd");
+            continue;
+        }
 
-    std::cout << '\n';
-    std::cout << "new client connected\n";
-    std::cout << "client connected from " << client_ip << ':'
-              << ntohs(client_address.sin_port) << '\n';
-    std::cout << "listen_fd = " << listen_fd << '\n';
-    std::cout << "conn_fd   = " << conn_fd << "\n\n";
+        const std::uint16_t client_port = ntohs(client_address.sin_port);
+        {
+            std::ostringstream output;
+            output << "\nnew client connected\n"
+                   << "client connected from " << client_ip << ':'
+                   << client_port << '\n'
+                   << "listen_fd = " << listen_fd << '\n'
+                   << "conn_fd   = " << conn_fd << "\n\n";
+            log_message(output.str());
+        }
 
-    char buffer[kBufferSize]{};
-    ssize_t received = -1;
-    do {
-        received = ::recv(conn_fd, buffer, sizeof(buffer), 0);
-    } while (received == -1 && errno == EINTR);
-
-    bool success = true;
-    if (received == -1) {
-        std::cerr << "recv() failed: " << std::strerror(errno) << '\n';
-        success = false;
-    } else if (received == 0) {
-        std::cout << "client closed the connection without sending data\n";
-    } else {
-        const std::string message(buffer, static_cast<std::size_t>(received));
-        std::cout << "received: " << message << '\n';
-
-        if (!send_all(conn_fd, buffer, static_cast<std::size_t>(received))) {
-            success = false;
-        } else {
-            std::cout << "echo sent\n";
+        try {
+            std::thread worker(handle_client, conn_fd, std::string(client_ip),
+                               client_port);
+            worker.detach();
+        } catch (const std::system_error& error) {
+            std::ostringstream output;
+            output << "failed to create worker thread for conn_fd=" << conn_fd
+                   << ": " << error.what() << '\n';
+            log_error(output.str());
+            close_fd(conn_fd, "conn_fd");
         }
     }
-
-    const bool conn_closed = close_fd(conn_fd, "conn_fd");
-    const bool listen_closed = close_fd(listen_fd, "listen_fd");
-    success = success && conn_closed && listen_closed;
-
-    std::cout << "\nconnection closed\n";
-    return success ? 0 : 1;
 }

@@ -1,6 +1,10 @@
-# 基于 C++ 的 Linux 阻塞式 TCP Client/Server
+# linux-tcp
 
-这是一个使用 C++17 和 Linux/POSIX Socket API 逐阶段实现的 TCP Client/Server 学习项目。当前代码为 Stage 1：最小单客户端阻塞式 TCP Echo；后续 Stage 2、Stage 3 将继续在同一仓库中演进。
+> 从基础理解，到机制深入，再到自主构建。
+
+这是一个使用 C++17 和 Linux/POSIX Socket API 逐阶段实现的 TCP Client/Server 项目。它从最小可验证模型出发，在实践中理解 Linux TCP，再逐步深入系统机制并形成自己的网络程序设计能力。
+
+当前代码为 Stage 1：最小单客户端阻塞式 TCP Echo。后续 Stage 2、Stage 3 将继续在同一仓库中演进。
 
 ## 核心模型
 
@@ -27,7 +31,7 @@ client_fd  ←──── TCP connection ────→ conn_fd
 ## 项目结构
 
 ```text
-cpp-linux-tcp-client-server/
+linux-tcp/
 ├── .gitignore
 ├── CMakeLists.txt
 ├── README.md
@@ -224,11 +228,11 @@ conn_fd   -> socket:[...]
 
 这些限制是第一阶段的设计边界。
 
-## 演进路线
+## 演进路线：学习、深入、创造
 
-- Stage 1：单客户端、阻塞式 TCP Echo（当前版本）。
-- Stage 2：在保持底层 POSIX Socket API 学习目标的前提下继续扩展。
-- Stage 3：基于前两个阶段的提交历史继续演进。
+- Stage 1 · 学习：从 `socket()`、`bind()`、`listen()`、`accept()` 和 `connect()` 开始，完成单客户端阻塞式 TCP Echo（当前版本）。
+- Stage 2 · 深入：在保持 POSIX Socket API 主线的基础上，继续研究 TCP 字节流、连接生命周期、错误处理和并发模型。
+- Stage 3 · 创造：综合前两个阶段积累的机制理解，设计并实现更完整的网络通信程序。
 
 每个阶段都在同一 Git 仓库中开发，并通过独立提交或版本标签保留可回溯的阶段基线。
 

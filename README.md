@@ -1,6 +1,6 @@
 # 基于 C++ 的 Linux 阻塞式 TCP Client/Server
 
-这是一个使用 C++17 和 Linux/POSIX Socket API 实现的最小单客户端阻塞式 TCP Echo 项目。项目不使用线程、I/O 多路复用、非阻塞 socket 或第三方网络框架。
+这是一个使用 C++17 和 Linux/POSIX Socket API 逐阶段实现的 TCP Client/Server 学习项目。当前代码为 Stage 1：最小单客户端阻塞式 TCP Echo；后续 Stage 2、Stage 3 将继续在同一仓库中演进。
 
 ## 核心模型
 
@@ -27,7 +27,7 @@ client_fd  ←──── TCP connection ────→ conn_fd
 ## 项目结构
 
 ```text
-cpp_socket_stage1/
+cpp-linux-tcp-client-server/
 ├── .gitignore
 ├── CMakeLists.txt
 ├── README.md
@@ -224,6 +224,14 @@ conn_fd   -> socket:[...]
 
 这些限制是第一阶段的设计边界。
 
+## 演进路线
+
+- Stage 1：单客户端、阻塞式 TCP Echo（当前版本）。
+- Stage 2：在保持底层 POSIX Socket API 学习目标的前提下继续扩展。
+- Stage 3：基于前两个阶段的提交历史继续演进。
+
+每个阶段都在同一 Git 仓库中开发，并通过独立提交或版本标签保留可回溯的阶段基线。
+
 ## Git
 
 仓库已经初始化，建议使用小步提交继续后续实验：
@@ -232,4 +240,3 @@ conn_fd   -> socket:[...]
 git status
 git log --oneline
 ```
-

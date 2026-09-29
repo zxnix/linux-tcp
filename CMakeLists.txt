@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.16)
 
-project(cpp_socket_stage1 LANGUAGES CXX)
+project(cpp_linux_tcp_client_server LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -13,4 +13,3 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     target_compile_options(server PRIVATE -Wall -Wextra -Wpedantic)
     target_compile_options(client PRIVATE -Wall -Wextra -Wpedantic)
 endif()
-

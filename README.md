@@ -2,28 +2,29 @@
 
 > 从基础理解，到机制深入，再到自主构建。
 
-这是一个使用 C++17 和 Linux/POSIX Socket API 逐阶段实现的 TCP Client/Server 项目。它从最小可验证模型出发，在实践中理解 Linux TCP，再逐步深入系统机制并形成自己的网络程序设计能力。
-
-当前代码为 Stage 1：最小单客户端阻塞式 TCP Echo。后续 Stage 2、Stage 3 将继续在同一仓库中演进。
+从最小可验证模型出发，在实践中理解 Linux TCP，再逐步深入系统机制并形成自己的网络程序设计能力。
 
 ## 核心模型
 
-```text
-Client Process                         Server Process
+```mermaid
+flowchart LR
+    subgraph Client["Client Process"]
+        direction TB
+        CSocket["socket()"] --> ClientFD["client_fd"]
+        ClientFD --> Connect["connect(127.0.0.1, 8080)"]
+    end
 
-socket()                              socket()
-   ↓                                     ↓
-client_fd                            listen_fd
-   ↓                                     ↓
-connect(127.0.0.1, 8080)             bind(0.0.0.0, 8080)
-   │                                     ↓
-   │                                  listen()
-   │                                     ↓
-   └────── TCP connection setup ─────→ accept()
-                                         ↓
-                                      conn_fd
+    subgraph Server["Server Process"]
+        direction TB
+        SSocket["socket()"] --> ListenFD["listen_fd"]
+        ListenFD --> Bind["bind(0.0.0.0, 8080)"]
+        Bind --> Listen["listen()"]
+        Listen --> Accept["accept()"]
+        Accept --> ConnFD["conn_fd"]
+    end
 
-client_fd  ←──── TCP connection ────→ conn_fd
+    Connect -- "TCP connection setup" --> Accept
+    ClientFD <-->|"TCP data"| ConnFD
 ```
 
 `listen_fd` 只负责监听新连接，业务数据在 `client_fd` 与 `conn_fd` 之间传输。`accept()` 不会替换 `listen_fd`，而是返回一个新的 connected socket 文件描述符 `conn_fd`。
